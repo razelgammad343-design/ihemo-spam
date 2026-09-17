@@ -27,6 +27,23 @@ def keep_alive():
     thread.start()
 
 # =========================================================
+# TIME FORMATTING
+# =========================================================
+def format_time(seconds):
+    """Format a duration in seconds as e.g. '2h 5m 30s'."""
+    seconds = max(0, int(seconds))
+    hours = seconds // 3600
+    minutes = (seconds % 3600) // 60
+    secs = seconds % 60
+
+    if hours > 0:
+        return f"{hours}h {minutes}m {secs}s"
+    elif minutes > 0:
+        return f"{minutes}m {secs}s"
+    else:
+        return f"{secs}s"
+
+# =========================================================
 # SPAM CONFIGURATION
 # =========================================================
 OWNER_USER_IDS = {
@@ -44,8 +61,11 @@ SPAM_SHORT_LABEL = "2H 10M"
 
 intents = discord.Intents.default()
 
+# command_prefix must be a valid string/list/callable, never None,
+# or discord.py raises a TypeError the moment a message event fires.
+# It's unused here since this bot is slash-command only.
 bot = commands.Bot(
-    command_prefix=None,
+    command_prefix="!spamunused_",
     intents=intents
 )
 
@@ -1213,4 +1233,3 @@ if __name__ == "__main__":
         raise RuntimeError("TOKEN environment variable is missing.")
     keep_alive()
     bot.run(token)
-
