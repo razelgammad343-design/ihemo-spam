@@ -45,11 +45,82 @@ SPAM_SHORT_LABEL = "2H 10M"
 intents = discord.Intents.default()
 
 bot = commands.Bot(
-    command_prefix="!",
+    command_prefix=None,
     intents=intents
 )
 
 spam_lock = asyncio.Lock()
+
+# =========================================================
+# SPAM DATABASE
+# =========================================================
+def get_spam_db():
+    conn = sqlite3.connect(
+        SPAM_DATABASE_FILE,
+        timeout=30
+    )
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def initialize_spam_database():
+    conn = get_spam_db()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS spam_worlds (
+            world TEXT PRIMARY KEY,
+            end_time_2h REAL,
+            end_time_6h REAL,
+            added_by INTEGER NOT NULL
+        )
+    """)
+
+    # Add timer columns when using an older spam database.
+    cursor.execute("PRAGMA table_info(spam_worlds)")
+    columns = {row[1] for row in cursor.fetchall()}
+
+    if "end_time_2h" not in columns:
+        cursor.execute("""
+            ALTER TABLE spam_worlds
+            ADD COLUMN end_time_2h REAL
+        """)
+
+    if "end_time_6h" not in columns:
+        cursor.execute("""
+            ALTER TABLE spam_worlds
+            ADD COLUMN end_time_6h REAL
+        """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS spam_panel (
+            id INTEGER PRIMARY KEY,
+            owner_id INTEGER,
+            panel_message_id INTEGER
+        )
+    """)
+
+    cursor.execute("""
+        INSERT OR IGNORE INTO spam_panel
+        (id, owner_id, panel_message_id)
+        VALUES (1, NULL, NULL)
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS spam_active_ping (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            message_id INTEGER
+        )
+    """)
+
+    cursor.execute("""
+        INSERT OR IGNORE INTO spam_active_ping
+        (id, message_id)
+        VALUES (1, NULL)
+    """)
+
+    conn.commit()
+    conn.close()
+    print("✅ Spam database initialized.")
 
 def normalize_world(world):
     return world.strip().upper()
@@ -1019,58 +1090,6 @@ async def spamtimer(
         ephemeral=True
     )
 
-@bot.tree.command(
-    name="spamlist",
-    description="List all Spam worlds and timers"
-)
-async def spamlist(
-    interaction: discord.Interaction
-):
-    if not is_allowed_spam_channel(
-        interaction.channel
-    ):
-        await interaction.response.send_message(
-            "❌ Use `/spamlist` in the configured Spam channel.",
-            ephemeral=True
-        )
-        return
-    worlds = get_all_spam_worlds()
-    if not worlds:
-        await interaction.response.send_message(
-            "🌎 No worlds have been added.",
-            ephemeral=True
-        )
-        return
-    now = time.time()
-    lines = []
-    for row in worlds:
-        world = row["world"]
-        owner = f"<@{row['added_by']}>"
-        end_2h = row["end_time_2h"]
-        timer_2h = format_spam_countdown(end_2h)
-
-        end_6h = row["end_time_6h"]
-        timer_6h = format_spam_countdown(end_6h)
-        lines.append(
-            f"**{world}** — {owner}\n"
-            f"  ⏱️ {SPAM_SHORT_LABEL}: {timer_2h}\n"
-            f"  ⏱️ 6H: {timer_6h}"
-        )
-    description = "\n\n".join(lines)
-    if len(description) > 4096:
-        description = (
-            description[:4090]
-            + "..."
-        )
-    embed = discord.Embed(
-        title="🌎 SPAM WORLDS",
-        description=description,
-        color=discord.Color.blurple()
-    )
-    await interaction.response.send_message(
-        embed=embed,
-        ephemeral=True
-    )
 @tasks.loop(seconds=10)
 async def spam_timer_loop():
     try:
@@ -1161,7 +1180,7 @@ async def on_ready():
 
     try:
         synced = await bot.tree.sync()
-        print(f"Synced {len(synced)} spam slash commands.")
+        print(f"✅ Synced {len(synced)} spam slash commands.")
     except Exception as e:
         print(f"Slash command sync error: {e}")
 
