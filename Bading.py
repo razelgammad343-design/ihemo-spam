@@ -1012,16 +1012,18 @@ async def spamstatus(
     )
 @bot.tree.command(
     name="spamtimer",
-    description="Set the current timer for a Spam world."
+    description="Set BOTH Spam timers for a world at the same time."
 )
 @app_commands.describe(
     world="The Spam world",
-    hours="How many hours the current timer should have"
+    hours_2="How many hours the first timer should have",
+    hours_6="How many hours the second timer should have"
 )
 async def spamtimer(
     interaction: discord.Interaction,
     world: str,
-    hours: float
+    hours_2: float,
+    hours_6: float
 ):
     if interaction.user.id not in OWNER_USER_IDS:
         await interaction.response.send_message(
@@ -1041,9 +1043,9 @@ async def spamtimer(
 
     world = normalize_world(world)
 
-    if hours <= 0:
+    if hours_2 <= 0 or hours_6 <= 0:
         await interaction.response.send_message(
-            "❌ The number of hours must be greater than 0.",
+            "❌ Both timer values must be greater than 0.",
             ephemeral=True
         )
         return
@@ -1057,24 +1059,26 @@ async def spamtimer(
         )
         return
 
-    seconds = int(hours * 60 * 60)
-    end_time = time.time() + seconds
+    seconds_2 = int(hours_2 * 60 * 60)
+    seconds_6 = int(hours_6 * 60 * 60)
+    end_time_2 = time.time() + seconds_2
+    end_time_6 = time.time() + seconds_6
 
     conn = sqlite3.connect(
         SPAM_DATABASE_FILE
     )
-    conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
     cursor.execute(
         """
         UPDATE spam_worlds
         SET end_time_2h = ?,
-            end_time_6h = NULL
+            end_time_6h = ?
         WHERE world = ?
         """,
         (
-            end_time,
+            end_time_2,
+            end_time_6,
             world
         )
     )
@@ -1085,8 +1089,10 @@ async def spamtimer(
     await update_spam_panel()
 
     await interaction.response.send_message(
-        f"✅ **{world}** timer set to **{format_time(seconds)}**.\n\n"
-        f"⏱️ This only changes the **current cycle**.",
+        f"✅ **{world}** timers updated!\n\n"
+        f"⏱️ First timer: **{format_time(seconds_2)}**\n"
+        f"⏱️ Second timer: **{format_time(seconds_6)}**\n\n"
+        "🔄 Both timers were started at the same time.",
         ephemeral=True
     )
 
