@@ -1025,48 +1025,47 @@ async def spamtimer(
     hours_2: float,
     hours_6: float
 ):
+    # Acknowledge the interaction immediately so Discord does not time out
+    # while the database/panel is being updated.
+    await interaction.response.defer(ephemeral=True)
+
     if interaction.user.id not in OWNER_USER_IDS:
-        await interaction.response.send_message(
-            "❌ You don't have permission to use this command.",
-            ephemeral=True
+        await interaction.edit_original_response(
+            content="❌ You don't have permission to use this command."
         )
         return
 
-    if not is_allowed_spam_channel(
-        interaction.channel
-    ):
-        await interaction.response.send_message(
-            "❌ This command can only be used in the configured Spam channel.",
-            ephemeral=True
+    if not is_allowed_spam_channel(interaction.channel):
+        await interaction.edit_original_response(
+            content=(
+                "❌ This command can only be used in the configured Spam channel."
+            )
         )
         return
 
     world = normalize_world(world)
 
     if hours_2 <= 0 or hours_6 <= 0:
-        await interaction.response.send_message(
-            "❌ Both timer values must be greater than 0.",
-            ephemeral=True
+        await interaction.edit_original_response(
+            content="❌ Both timer values must be greater than 0."
         )
         return
 
     row = get_spam_world(world)
 
     if row is None:
-        await interaction.response.send_message(
-            f"❌ **{world}** does not exist.",
-            ephemeral=True
+        await interaction.edit_original_response(
+            content=f"❌ **{world}** does not exist."
         )
         return
 
     seconds_2 = int(hours_2 * 60 * 60)
     seconds_6 = int(hours_6 * 60 * 60)
-    end_time_2 = time.time() + seconds_2
-    end_time_6 = time.time() + seconds_6
+    now = time.time()
+    end_time_2 = now + seconds_2
+    end_time_6 = now + seconds_6
 
-    conn = sqlite3.connect(
-        SPAM_DATABASE_FILE
-    )
+    conn = sqlite3.connect(SPAM_DATABASE_FILE, timeout=30)
     cursor = conn.cursor()
 
     cursor.execute(
@@ -1086,14 +1085,18 @@ async def spamtimer(
     conn.commit()
     conn.close()
 
-    await update_spam_panel()
+    try:
+        await update_spam_panel()
+    except Exception as e:
+        print(f"❌ Error updating Spam panel after /spamtimer: {e}")
 
-    await interaction.response.send_message(
-        f"✅ **{world}** timers updated!\n\n"
-        f"⏱️ First timer: **{format_time(seconds_2)}**\n"
-        f"⏱️ Second timer: **{format_time(seconds_6)}**\n\n"
-        "🔄 Both timers were started at the same time.",
-        ephemeral=True
+    await interaction.edit_original_response(
+        content=(
+            f"✅ **{world}** timers updated!\n\n"
+            f"⏱️ First timer: **{format_time(seconds_2)}**\n"
+            f"⏱️ Second timer: **{format_time(seconds_6)}**\n\n"
+            "🔄 Both timers were started at the same time."
+        )
     )
 
 @tasks.loop(seconds=10)
